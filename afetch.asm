@@ -2,6 +2,9 @@
 
 section .data
 	; yes
+	newline db 10
+	newline_END db 0
+
 	spaces times 12 db ' '
 	spaces_END db 0
 
@@ -76,10 +79,18 @@ print_info_line:
 	push rsi
 	push rdi
 
-	mov rdx, rax
+	push rax
+
+	mov rax, 1
+	mov rdi, 1
+	mov rsi, newline
+	mov rdx, 1
+	syscall
+
 	mov rax, 1
 	mov rdi, 1
 	mov rsi, spaces
+	pop rdx
 	syscall
 	
 	mov rax, 1
