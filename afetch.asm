@@ -50,9 +50,6 @@ section .bss
 	trash resb 255
 	trash_END resb 1
 
-	uid resq 1
-	uid_END resb 1
-
 	uid_string resb 8
 	uid_string_END resb 1
 
@@ -80,64 +77,95 @@ section .bss
 section .text
 	global _start
 
+; ; ; ; ; ; ; ; ; ; ; ;
+; Starts the program  ;
+; Arguments: none     ;
+; Returns:   none     ;
+; ; ; ; ; ; ; ; ; ; ; ;
 _start:
+	; Get all the things!
 	call read_passwd
 	call read_hostname
 	call read_release
 	call read_version
 
+	; Print username and hostname (incredible observation!)
 	call print_username_hostname
 
+	; Print distro release
 	mov rdi, TITLE_RELEASE
 	mov rsi, release
 	call print_info_line
 
+	; Print kernel version
 	mov rdi, TITLE_VERSION
 	mov rsi, version
 	call print_info_line
 
+	; Print shell path
 	mov rdi, TITLE_SHELL
 	mov rsi, shell
 	call print_info_line
 
 	call _exit
 
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+; Prints the username and hostname.   ;
+; Arguments: none                     ;
+; Returns:   none                     ;
+; Username and hostname are separated ;
+; by USER_HOST_SEPARATOR ("@")        ;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
 print_username_hostname:
+	; Get username length
 	mov rdi, username
 	call strlen
 
+	; Get username padding amount, and
+	; force it to 1 if <= 0
 	mov rax, (TITLE_LENGTH - 2)
 	sub rax, rdx
 	test rax, rax
-	jg .print
+	jg .cont
 
 	mov rax, 1
 
-	.print:
+	.cont:
+	; Print padding
 	mov rsi, SPACES
 	mov rdx, rax
 	call writestd
 
+	; Print username
 	mov rdi, username
 	call printstr
 
+	; Print separator
 	mov rsi, USER_HOST_SEPARATOR
 	mov rdx, (USER_HOST_SEPARATOR_END - USER_HOST_SEPARATOR)
 	call writestd
 
+	; Print hostname
 	mov rdi, hostname
 	call printstr
 
+	; Print newline
 	mov rsi, NEWLINE
 	mov rdx, NEWLINE_LENGTH
 	call writestd
 
 	ret
 
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+; Prints a line of system info.       ;
+; Arguments: rdi = title, rsi = value ;
+; Returns:   none                     ;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
 print_info_line:
 	push rsi
 	push rdi
 
+	; Left pad title with spaces
 	call strlen
 	mov rax, TITLE_LENGTH
 	sub rax, rdx
@@ -145,32 +173,41 @@ print_info_line:
 	mov rdx, rax
 	call writestd
 
+	; Print title
 	pop rdi
 	call printstr
 	
+	; Print value
 	pop rdi
 	call printstr
 
+	; Print newline
 	mov rsi, NEWLINE
 	mov rdx, NEWLINE_LENGTH
 	call writestd
 	
 	ret
 
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+; Reads and parses /etc/password. ;
+; Arguments: none                 ;
+; Returns:   none                 ;
+; Sets username and shell buffers ;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
 read_passwd:
 	; Get Userid
-	mov rax, 0x66								; Set syscall number to 0x66 (getuid)
+	mov rax, 0x66			; syscall = 0x66 (getuid)
 	syscall
-	mov [uid], rax								; Store uid 
+	mov rbx, rax
 
 	; Open /etc/passwd
-	mov rax, 0x02								; Set syscall number to 0x02 (open)
-	mov rdi, PASSWD_PATH						; Set filename to "/etc/passwd"
-	mov rsi, 0									; Set flags to O_RDONLY (0)
-	mov rdx, 0									; Set create mode to 0
+	mov rax, 0x02			; syscall = 0x02 (open)
+	mov rdi, PASSWD_PATH	; filename = "/etc/passwd"
+	mov rsi, 0				; flags = 0 (O_RDONLY)
+	mov rdx, 0				; create mode = 0
 	syscall
 
-	mov r12, rax								; Save /etc/passwd fd to callee-saved register
+	mov r12, rax
 
 	.loop:
 		; Read username
@@ -192,11 +229,9 @@ read_passwd:
 		mov r13, trash
 		mov r14, trash_END
 		call read_passwd_field
-
 		mov r13, trash
 		mov r14, trash_END
 		call read_passwd_field
-
 		mov r13, trash
 		mov r14, trash_END
 		call read_passwd_field
@@ -206,140 +241,163 @@ read_passwd:
 		mov r14, shell_END
 		call read_passwd_field
 
-
-		mov rdi, uid_string						; Convert uid string to integer value
-		call str_to_int							; ..
-		cmp rax, [uid]							; Loop if uid isn't current uid
-		jne .loop								; ..
+		; Loop if uid != current uid
+		mov rdi, uid_string
+		call str_to_int
+		cmp rax, rbx		; rbx = current uid
+		jne .loop
 
 	; Close /etc/passwd
-	mov rax, 0x03								; Set syscall number to 0x03 (close)
-	mov rdi, r12								; Set fd to /etc/passwd
+	mov rax, 0x03			; syscall = 0x03 (close)
+	mov rdi, r12			; fd = /etc/passwd
 	syscall
 
 	ret
 
-		read_passwd_field:
-			sub r13, 1							; Move buffer pointer back one (Incremented at start of loop)
-			
-			.loop:
-				inc r13							; Move buffer to next char
+	read_passwd_field:
+		sub r13, 1
+		
+		.loop:
+			inc r13
 
-				mov rax, 0x00					; Set syscall number to 0x00 (read)
-				mov rdi, r12					; Set fd to /etc/passwd
-				mov rsi, r13					; Set buffer to current char buffer
-				mov rdx, 1						; Set count to 1
-				syscall
+			; Read 1 char
+			mov rax, 0x00			; syscall = 0x00 (read)
+			mov rdi, r12			; fd = /etc/passwd
+			mov rsi, r13			; buffer = current char buffer
+			mov rdx, 1				; count = 1
+			syscall
 
-				mov bl, [r13]					; Load read char into bl
-				cmp bl, ':'						; Break if read char is a colon
-				je .end							; ..
-				.notcolon:
-				cmp bl, 10						; Break if read char is a newline
-				je .end							; ..
+			; Load char
+			mov cl, [r13]
 
-				jmp .loop
+			; Break if char is colon or newline
+			cmp cl, ':'
+			je .end
+			cmp cl, 10
+			je .end
 
-			.end:
-				xor bl, bl
+			jmp .loop
 
-				.clear_loop:
-					mov [r13], bl				; Overwrite current buffer character
-					inc r13						; Move to next character
-					
-					cmp r13, r14				; Loop if buffer is not at end
-					jne .clear_loop				; ..
+		.end:
+			xor cl, cl
 
-			ret
+			.clear_loop:
+				; Overwrite current char
+				mov [r13], cl
 
+				inc r13
+				
+				; Loop if buffer is not at end
+				cmp r13, r14
+				jne .clear_loop
+
+		ret
+
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+; Reads and parses /etc/hostname. ;
+; Arguments: none                 ;
+; Returns:   none                 ;
+; Sets hostname buffer            ;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
 read_hostname:
 	; Open /etc/hostname
-	mov rax, 0x02								; Set syscall number to 0x02 (open)
-	mov rdi, HOSTNAME_PATH						; Set filename to "/etc/hostname"
-	mov rsi, 0									; Set flags to O_RDONLY (0)
-	mov rdx, 0									; Set create mode to 0
+	mov rax, 0x02			; syscall = 0x02 (open)
+	mov rdi, HOSTNAME_PATH	; filename = "/etc/hostname"
+	mov rsi, 0				; flags = 0 (O_RDONLY)
+	mov rdx, 0				; create mode = 0
 	syscall
 
-	mov r12, rax								; Save to preserved register
+	mov r12, rax
 
 	; Read /etc/hostname
-	mov rdi, r12								; Set fd to /etc/hostname
-	mov rax, 0x00								; Set syscall number to 0x00 (read)
-	mov rsi, hostname							; Set buffer to hostname buffer
-	mov rdx, (hostname_END - hostname)			; Set count to length of hostname buffer
+	mov rdi, r12						; fd = /etc/hostname
+	mov rax, 0x00						; Set syscall number to 0x00 (read)
+	mov rsi, hostname					; buffer = hostname buffer
+	mov rdx, (hostname_END - hostname)	; count = size of hostname buffer
 	syscall
 
 	; Strip newline
-	mov rdi, hostname							; Get length of hostname
-	call strlen									; ..
-
-	add rdx, hostname							; Get address of last character (always newline)
-	dec rdx										; ..
-
-	xor cl, cl									; Overwrite with null
-	mov [rdx], cl								; ..
+	mov rdi, hostname
+	call strlen
+	add rdx, hostname
+	dec rdx
+	xor cl, cl
+	mov [rdx], cl
 
 	; Close /etc/hostname
-	mov rax, 0x03								; Set syscall number to 0x03 (close)
-	mov rdi, r12								; Set fd to /etc/hostname
+	mov rax, 0x03			; syscall = 0x03 (close)
+	mov rdi, r12			; fd = /etc/hostname
 	syscall
 
 	ret
 
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+; Reads and parses /etc/os-release (/usr/lib/os-release). ;
+; Arguments: none                                         ;
+; Returns:   none                                         ;
+; Sets release buffer                                     ;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
 read_release:
 	; Attempt to open /etc/os-release
-	mov rax, 0x02								; Set syscall number to 0x02 (open)
-	mov rdi, RELEASE_PATH						; Set filename to "/etc/os-release"
-	mov rsi, 0									; Set flags to O_RDONLY (0)
-	mov rdx, 0									; Set create mode to 0
+	mov rax, 0x02			; syscall = 0x02 (open)
+	mov rdi, RELEASE_PATH	; filename = "/etc/os-release"
+	mov rsi, 0				; flags = 0 (O_RDONLY)
+	mov rdx, 0				; create mode = 0
 	syscall
-
-	test rax, rax								; Jump if no error, otherwise open fallback
-	jg .opened
+	
+	; Continue if no error, otherwise open fallback
+	test rax, rax			
+	jg .cont
 
 	; Open /usr/lib/os-release
-	mov rax, 0x02								; Set syscall number to 0x02 (open)
-	mov rdi, RELEASE_FALLBACK_PATH				; Set filename to "/usr/lib/os-release"
-	mov rsi, 0									; Set flags to O_RDONLY (0)
-	mov rdx, 0									; Set create mode to 0
+	mov rax, 0x02					; syscall = 0x02 (open)
+	mov rdi, RELEASE_FALLBACK_PATH	; filename = "/usr/lib/os-release"
+	mov rsi, 0						; flags = 0 (O_RDONLY)
+	mov rdx, 0						; create mode = 0
 	syscall
 
-	.opened:
-	mov rbx, rax								; Store fd in preserved register
+	.cont:
+	mov rbx, rax
 
 	call read_release_line
 	call read_release_value
 
 	; Close /etc/os-release or /usr/lib/os-release
-	mov rax, 0x03								; Set syscall number to 0x03 (close)
-	mov rdi, rbx								; Set fd to /etc/hostname or /usr/lib/os-release
+	mov rax, 0x03			; syscall = 0x03 (close)
+	mov rdi, rbx			; fd = /etc/hostname or /usr/lib/os-release
 	syscall
 
 	ret
 
 	read_release_line:
+		; Set current buffer to key buffer
 		mov r12, (release_line_key - 1)
 
 		.loop:
 			inc r12
 
 			; Read 1 char
-			mov rdi, rbx								; Set fd
-			mov rax, 0x00								; Set syscall number to 0x00 (read)
-			mov rsi, r12								; Set buffer to release line buffer
-			mov rdx, 1									; Set count 1
+			mov rdi, rbx			; fd
+			mov rax, 0x00			; syscall = 0x00 (read)
+			mov rsi, r12			; buffer = current buffer
+			mov rdx, 1				; count = 1
 			syscall
 
+			; Load char
 			mov al, [r12]
 
+			; Break if newline or null
 			cmp al, 10
 			je .end
 			cmp al, 0
 			je .end
 
+			; Loop if not '='
 			cmp al, '='
 			jne .loop
 			
+			; If char = '=', clear current char and
+			; set current buffer to value buffer
 			mov al, 0
 			mov [r12], al
 			mov r12, (release_line_value - 1)
@@ -347,34 +405,46 @@ read_release:
 			jmp .loop
 
 		.end:
+			; Overwrite current char with null. 
+			; (already either null or newline)
 			mov al, 0
 			mov [r12], al
+
+			; Check if key = "PRETTY_NAME"
 			mov rdi, release_line_key
 			mov rsi, RELEASE_PRETTY_NAME_FIELD
 			call strcmp
 
+			; Set current buffer to key buffer
 			mov r12, (release_line_key - 1)
 
+			; Loop key is incorrect
 			cmp rax, 0
 			je .loop
 
 		ret
 
 	read_release_value:
+		; Set read buffer to release line value buffer
+		; and set write buffer to release buffer
 		mov rcx, (release_line_value - 1)
 		mov rdx, release
 
 		.loop:
 			inc rcx
 
+			; Load char
 			mov al, [rcx]
 
+			; Skip if char = '"'
 			cmp al, '"'
 			je .loop
 
+			; Break if null
 			cmp al, 0
 			je .end
 
+			; Copy char to release buffer
 			mov [rdx], al
 			inc rdx
 
@@ -384,30 +454,38 @@ read_release:
 
 		ret
 
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+; Reads and parses /proc/version. ;
+; Arguments: none                 ;
+; Returns:   none                 ;
+; Sets version buffer             ;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
 read_version:
 	; Open /proc/version
-	mov rax, 0x02								; Set syscall number to 0x02 (open)
-	mov rdi, VERSION_PATH						; Set filename to "/proc/version"
-	mov rsi, 0									; Set flags to O_RDONLY (0)
-	mov rdx, 0									; Set create mode to 0
+	mov rax, 0x02			; syscall = 0x02 (open)
+	mov rdi, VERSION_PATH	; filename = "/proc/version"
+	mov rsi, 0				; flags = 0 (O_RDONLY)
+	mov rdx, 0				; create mode = 0
 	syscall
 
 	; Read /proc/version
-	mov rdi, rax								; Set fd to /proc/version
-	mov rax, 0x00								; Set syscall number to 0x00 (read)
-	mov rsi, version							; Set buffer to version buffer
-	mov rdx, (version_END - version)			; Set count to length of version buffer
+	mov rdi, rax			; fd = /proc/version
+	mov rax, 0x00			; syscall = 0x00 (read)
+	mov rsi, version		; buffer = version buffer
+	mov rdx, (version_END - version)	; count = size of buffer
 	syscall
 
 	; Strip compilation info
-	mov rdx, (version - 1)						; Set buffer to version buffer and subtract one (Incremented at start of loop)
-	xor cl, cl									; Clear character
+	mov rdx, (version - 1)
+	xor cl, cl
 
 	.loop:
 		inc rdx
 
+		; Load char
 		mov cl, [rdx]
 
+		; Loop until parenthesis
 		cmp cl, '('
 		jne .loop
 
@@ -415,60 +493,82 @@ read_version:
 	xor cl, cl
 
 	.clear_loop:
+		; Overwrite char
 		mov [rdx], cl
-
+		
 		inc rdx
 
+		; Loop if next char is not null
 		cmp [rdx], cl
 		jne .clear_loop
 
 	; Close /proc/version
-	mov rax, 0x03								; Set syscall number to 0x03 (close)
-	mov rdi, rbx								; Set fd to /proc/version
+	mov rax, 0x03			; syscall = 0x03 (close)
+	mov rdi, rbx			; fd = /proc/version
 	syscall
 
 	ret
 
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+; Parses a string into an int.  ;
+; Arguments: rdi = string       ;
+; Returns:   rax = int          ;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
 str_to_int:
-	mov rax, 0									; Clear output
-	dec rdi										; Move buffer pointer back one (Incremented at start of loop)
+	xor rax, rax
+	dec rdi
 	
 	.loop:
-		inc rdi									; Move buffer to next char
+		inc rdi
 
-		mov rcx, 0								; Clear rcx/cl
-		mov cl, [rdi]							; Read char from buffer
+		mov rcx, 0
+		mov cl, [rdi]
 
-		cmp cl, 0								; Break if char is null
-		je .end									; ..
+		; Break if end of string
+		cmp cl, 0
+		je .end
 
-		sub cl, 48								; Offset char ascii value to integer value
+		; Offset ASCII value to numerical value
+		sub cl, 48
 
-		mov r8, 10								; Shift current value by 1 place
-		mul r8									; ..
-		add rax, rcx							; Add newest digit to rax
+		; Append to return value
+
+		mov rdx, 10
+		mul rdx			; Shifts current value by one place
+		add rax, rcx
 
 		jmp .loop
 
 	.end:
 		ret
 
-
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+; Gets length of a string.  ;
+; Arguments: rdi = string   ;
+; Returns:   rdx = length   ;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
 strlen:
-	mov rdx, -1									; Clear result and subtract one (Incremented at start of loop)
-	sub rdi, 1									; Move buffer pointer back one (Incremented at start of loop)
+	mov rdx, -1
+	sub rdi, 1
 
 	.loop:
-		inc rdx									; Increment counter
-		inc rdi									; Move buffer to next char
+		inc rdx
+		inc rdi
 
-		mov cl, [rdi]							; Read char from buffer
+		; Load char
+		mov cl, [rdi]
 
-		cmp cl, 0								; Break if char is null
-		jne .loop								; ..
+		; Loop if not null
+		cmp cl, 0
+		jne .loop
 
 	ret
 
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+; Compares two strings.         ;
+; Arguments: rdi = a, rsi = b   ;
+; Returns:   rax = equal        ;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
 strcmp:
 	dec rdi
 	dec rsi
@@ -477,12 +577,15 @@ strcmp:
 		inc rdi
 		inc rsi
 
+		; Load chars
 		mov al, [rdi]
 		mov ah, [rsi]
 
+		; Check for equality
 		cmp al, ah
 		jne .false
 
+		; Check for end of string
 		cmp al, 0
 		je .true
 
@@ -498,23 +601,38 @@ strcmp:
 
 	.end:
 
-	ret
+	ret			; Unreachable
 
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+; Prints a string to stdout.      ;
+; Arguments: rdi = string         ;
+; Returns:   rax = bytes written  ;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
 printstr:
-	mov rsi, rdi								; Set write buffer to string buffer
-	call strlen									; Get length of string (returns in length register)
-	call writestd								; Write to stdout
+	mov rsi, rdi			; buffer = string buffer
+	call strlen				; count = length of string
+	call writestd
 
 	ret
 
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+; Writes a buffer to stdout.            ;
+; Arguments: rsi = buffer, rdx = count  ;
+; Returns:   rax = bytes written        ;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
 writestd:
-	mov rax, 1									; Set syscall number to 0x01 (write)
-	mov rdi, 1									; Set fd to stdout (1)
-	syscall										; Write
+	mov rax, 1			; syscall = 0x01 (write)
+	mov rdi, 1			; fd = 1 (stdout)
+	syscall
 
 	ret
 
+; ; ; ; ; ; ; ; ; ; ; ; ;
+; Exits the program.    ;
+; Arguments: none       ;
+; Returns:   error code ;
+; ; ; ; ; ; ; ; ; ; ; ; ;
 _exit:
-	mov rax, 60
-	mov rdi, 0
+	mov rax, 0x3C			; syscall = 0x3C (exit)
+	mov rdi, 0				; error code = 0
 	syscall
