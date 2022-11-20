@@ -4,6 +4,7 @@ d: debug
 
 assemble:
 	nasm -f elf64 -o afetch.o afetch.asm
+	strip --discard-all afetch.o 
 
 assemble-debug:
 	nasm -f elf64 -F dwarf -o afetch.o afetch.asm
@@ -13,3 +14,6 @@ link:
 
 clean:
 	rm -f afetch.o afetch
+
+install:
+	cp afetch /usr/local/bin/
