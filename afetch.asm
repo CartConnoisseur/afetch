@@ -1,4 +1,7 @@
 ; This code is a mess, good luck ;)
+; Note: This would definetely be faster if written in C.
+;           I'm not very good at asm, and this was done
+;           just for fun.
 
 TITLE_LENGTH               equ 12
 NEWLINE_LENGTH             equ 1
