@@ -1,6 +1,11 @@
 all: clean assemble link
+debug: clean assemble-debug link
+d: debug
 
 assemble:
+	nasm -f elf64 -o afetch.o afetch.asm
+
+assemble-debug:
 	nasm -f elf64 -F dwarf -o afetch.o afetch.asm
 
 link:
